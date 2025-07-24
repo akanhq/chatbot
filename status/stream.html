@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>流式聊天机器人</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .chat-container::-webkit-scrollbar {
+            width: 8px;
+        }
+        .chat-container::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+        .chat-container::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 4px;
+        }
+        .chat-container::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 flex flex-col min-h-screen">
+<div class="flex-1 flex items-center justify-center p-4">
+    <div class="w-full max-w-2xl">
+        <h1 class="text-2xl font-bold mb-4 text-center">聊天机器人 (流式)</h1>
+        <div id="chat-container" class="chat-container h-[70vh] border rounded-lg bg-gray-50 p-4 overflow-y-auto">
+            <div id="chat-messages"></div>
+        </div>
+    </div>
+</div>
+<div class="w-full max-w-2xl mx-auto p-4 bg-white border-t fixed bottom-0 left-0 right-0">
+    <div class="flex space-x-2">
+        <textarea id="message" class="flex-1 p-2 border rounded resize-none" rows="2" placeholder="输入你的消息..."></textarea>
+        <select id="model-select" class="p-2 border rounded bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <option value="deepseek-r1-250528">DeepSeek R1</option>
+            <option value="gpt-4">GPT-4</option>
+            <option value="kimi-k2">kimi-k2-250711</option>
+            <option value="doubao-seed">doubao-seed-1-6-250615</option>
+            <option value="grok-4">Grok 3</option>
+        </select>
+        <button id="send" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">发送</button>
+    </div>
+</div>
+
+<script>
+    const messageInput = document.getElementById('message');
+    const modelSelect = document.getElementById('model-select');
+    const sendButton = document.getElementById('send');
+    const chatMessages = document.getElementById('chat-messages');
+    const chatContainer = document.getElementById('chat-container');
+
+    // 添加消息到聊天区域
+    function addMessage(content, isUser = false) {
+        const messageDiv = document.createElement('div');
+        messageDiv.className = `p-2 my-2 rounded-lg ${isUser ? 'bg-blue-100 ml-auto max-w-[80%]' : 'bg-gray-200 max-w-[80%]'}`;
+        messageDiv.innerText = content;
+        chatMessages.appendChild(messageDiv);
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
+
+    // 处理流式响应
+    async function handleStream(response, responseDiv) {
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let messageBuffer = ''; // 缓冲消息片段
+        const sentenceEnd = /[。！？\n]/; // 句子结束标志
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) {
+                if (messageBuffer) {
+                    responseDiv.innerText = (responseDiv.innerText === '加载中...' ? '' : responseDiv.innerText) + messageBuffer;
+                    chatContainer.scrollTop = chatContainer.scrollHeight;
+                }
+                console.log('流结束');
+                break;
+            }
+
+            buffer += decoder.decode(value, { stream: true });
+            console.log('原始缓冲区:', buffer); // 调试：打印原始数据
+            const lines = buffer.split('\n\n');
+
+            for (let i = 0; i < lines.length - 1; i++) {
+                let line = lines[i].trim()
+                line = line.replaceAll("event:message","")
+                line = line.replaceAll("data:","")
+                console.log('收到SSE数据:', line); // 调试：打印每行数据
+
+                // 过滤无效数据
+                if (!line || line === 'event: message' || line === 'data:' || line === 'data:。event: message' || line.startsWith('data: event: message')) {
+                    console.log('跳过无效数据:', line);
+                    continue;
+                }
+
+                // 清理数据中的 event: message 和 data: 前缀
+                line = line.replace(/event: message/g, '').replace(/data: /g, '').trim();
+                if (!line) {
+                    console.log('跳过空数据:', line);
+                    continue;
+                }
+
+                let data = '';
+                if (line.startsWith('event: message\ndata: ')) {
+                    data = line.split('event: message\ndata: ')[1];
+                    console.log('收到SSE数据1:', data); // 调试：message 分支
+                } else if (line.startsWith('data: ')) {
+                    data = line.split('data: ')[1];
+                    console.log('收到SSE数据2:', data); // 调试：仅 data 分支
+                } else {
+                    data = line;
+                    console.log('收到SSE数据3:', data); // 调试：纯文本
+                }
+
+                // 再次清理，确保无残留前缀
+                data = data.replace(/event: message/g, '').replace(/data: /g, '').trim();
+                if (!data || data === '[DONE]') {
+                    if (data === '[DONE]') {
+                        if (messageBuffer) {
+                            responseDiv.innerText = (responseDiv.innerText === '加载中...' ? '' : responseDiv.innerText) + messageBuffer;
+                            chatContainer.scrollTop = chatContainer.scrollHeight;
+                        }
+                        console.log('收到 [DONE]');
+                        break;
+                    }
+                    continue;
+                }
+
+                messageBuffer += data;
+                console.log('当前消息缓冲:', messageBuffer); // 调试：打印缓冲内容
+
+                // 检查是否包含句子结束标志或缓冲区足够长
+                if (sentenceEnd.test(messageBuffer) || messageBuffer.length > 100) {
+                    responseDiv.innerText = (responseDiv.innerText === '加载中...' ? '' : responseDiv.innerText) + messageBuffer;
+                    chatContainer.scrollTop = chatContainer.scrollHeight;
+                    messageBuffer = ''; // 清空缓冲
+                }
+            }
+            buffer = lines[lines.length - 1];
+        }
+    }
+
+    // 处理发送消息
+    sendButton.addEventListener('click', async () => {
+        const message = messageInput.value.trim();
+        const model = modelSelect.value;
+        if (!message) {
+            alert('请输入消息！');
+            return;
+        }
+
+        // 添加用户消息
+        addMessage(message, true);
+        messageInput.value = '';
+        sendButton.disabled = true;
+
+        // 添加响应容器
+        const responseDiv = document.createElement('div');
+        responseDiv.className = 'p-2 my-2 rounded-lg bg-gray-200 max-w-[80%]';
+        responseDiv.innerText = '加载中...';
+        chatMessages.appendChild(responseDiv);
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+
+        try {
+            // 发起 POST 请求，包含模型参数
+            console.log('发送请求:', { message, model }); // 调试：打印请求数据
+            const response = await fetch('/api/chat/stream', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message, model })
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP 错误: ${response.status}`);
+            }
+
+            // 处理流式响应
+            await handleStream(response, responseDiv);
+        } catch (error) {
+            responseDiv.innerText = `错误: ${error.message}`;
+            console.error('请求错误:', error);
+        } finally {
+            sendButton.disabled = false;
+            messageInput.focus();
+        }
+    });
+
+    // 支持回车键提交
+    messageInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendButton.click();
+        }
+    });
+</script>
+</body>
+</html>
