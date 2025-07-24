@@ -1,9 +1,9 @@
 package main
 
 import (
-	"eino-chatbot/config"
-	"eino-chatbot/handlers"
-	"eino-chatbot/services"
+	"chatbot/config"
+	"chatbot/handlers"
+	"chatbot/services"
 	"fmt"
 
 	"github.com/gin-gonic/gin"

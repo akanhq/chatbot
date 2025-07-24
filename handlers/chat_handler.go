@@ -1,8 +1,8 @@
 package handlers
 
 import (
-	"eino-chatbot/models"
-	"eino-chatbot/services"
+	"chatbot/models"
+	"chatbot/services"
 	"io"
 	"net/http"
 

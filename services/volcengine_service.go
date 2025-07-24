@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"eino-chatbot/config"
+	"chatbot/config"
 
 	"github.com/volcengine/volcengine-go-sdk/service/arkruntime"
 	"github.com/volcengine/volcengine-go-sdk/service/arkruntime/model"

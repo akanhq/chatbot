@@ -1,72 +1,210 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
     <title>流式聊天机器人</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        .chat-container::-webkit-scrollbar {
-            width: 8px;
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         }
-        .chat-container::-webkit-scrollbar-track {
-            background: #f1f1f1;
+
+        #chat-container::-webkit-scrollbar {
+            width: 6px;
         }
-        .chat-container::-webkit-scrollbar-thumb {
-            background: #888;
-            border-radius: 4px;
+        #chat-container::-webkit-scrollbar-track {
+            background: transparent;
         }
-        .chat-container::-webkit-scrollbar-thumb:hover {
-            background: #555;
+        #chat-container::-webkit-scrollbar-thumb {
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 3px;
+        }
+        #chat-container::-webkit-scrollbar-thumb:hover {
+            background: rgba(0, 0, 0, 0.4);
+        }
+
+        .alert {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 1000;
+            background: linear-gradient(to right, #dc2626, #ef4444);
+            color: #ffffff;
+            padding: 16px 32px;
+            border-radius: 12px;
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+            animation: fadeIn 0.3s ease-out;
+            font-weight: 500;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translate(-50%, -60%); }
+            to { opacity: 1; transform: translate(-50%, -50%); }
+        }
+
+        #video-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 50;
+            display: none; /* 默认隐藏 */
+        }
+
+        #video-modal:not(.hidden) {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #video-modal .video-container {
+            position: relative;
+            background: #1f2937;
+            border-radius: 16px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+            padding: 24px;
+            width: 90%;
+            max-width: 896px;
+        }
+
+        #video-modal video {
+            width: 100%;
+            border-radius: 8px;
+        }
+
+        #video-modal .close-btn {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            font-size: 24px;
+            color: #9ca3af;
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+
+        #video-modal .close-btn:hover {
+            color: #ffffff;
         }
     </style>
 </head>
-<body class="bg-gray-100 flex flex-col min-h-screen">
-<div class="flex-1 flex items-center justify-center p-4">
-    <div class="w-full max-w-2xl">
-        <h1 class="text-2xl font-bold mb-4 text-center">聊天机器人 (流式)</h1>
-        <div id="chat-container" class="chat-container h-[70vh] border rounded-lg bg-gray-50 p-4 overflow-y-auto">
-            <div id="chat-messages"></div>
+<body class="flex h-screen overflow-hidden font-sans">
+
+<!-- 左侧侧边栏 -->
+<div class="w-64 bg-gray-100 text-gray-800 flex flex-col border-r border-gray-300">
+    <div class="p-6 font-bold text-xl border-b border-gray-300">聊天历史</div>
+    <div class="flex-1 overflow-y-auto p-4 space-y-3">
+        <button class="w-full text-left p-3 rounded-lg bg-white hover:bg-gray-200">对话 1</button>
+        <button class="w-full text-left p-3 rounded-lg bg-white hover:bg-gray-200">对话 2</button>
+    </div>
+    <div class="p-4 border-t border-gray-300 space-y-4">
+        <div>
+            <div class="text-sm text-gray-600 mb-2 font-medium">📽️ 项目演示视频</div>
+            <button id="open-video-btn" class="block w-full bg-orange-500 text-white text-center py-2 px-3 rounded-lg hover:bg-orange-600 transition font-semibold">
+                ▶ 点击观看
+            </button>
+        </div>
+        <button class="w-full p-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700">新建对话</button>
+    </div>
+</div>
+
+<!-- 右侧聊天区域 -->
+<div class="flex-1 bg-white flex flex-col">
+    <div class="p-6 border-b border-gray-200 text-2xl font-bold text-gray-800">聊天机器人</div>
+    <div class="flex-1 overflow-y-auto p-6" id="chat-container">
+        <div id="chat-messages" class="space-y-4"></div>
+    </div>
+    <div class="p-6 border-t border-gray-200">
+        <div class="flex space-x-3">
+            <textarea id="message" class="flex-1 p-3 border border-gray-300 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500" rows="3" placeholder="输入你的消息..."></textarea>
+            <select id="model-select" class="p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 w-48">
+                <option value="deepseek-r1-250528">DeepSeek R1</option>
+                <option value="kimi-k2-250711">Kimi K2</option>
+                <option value="doubao-seed-1-6-250615">Doubao Seed</option>
+                <option value="gpt-4">GPT-4</option>
+                <option value="grok-4">Grok 3</option>
+            </select>
+            <button id="send" class="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition">发送</button>
         </div>
     </div>
 </div>
-<div class="w-full max-w-2xl mx-auto p-4 bg-white border-t fixed bottom-0 left-0 right-0">
-    <div class="flex space-x-2">
-        <textarea id="message" class="flex-1 p-2 border rounded resize-none" rows="2" placeholder="输入你的消息..."></textarea>
-        <select id="model-select" class="p-2 border rounded bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500">
-            <option value="deepseek-r1-250528">DeepSeek R1</option>
-            <option value="gpt-4">GPT-4</option>
-            <option value="kimi-k2">kimi-k2-250711</option>
-            <option value="doubao-seed">doubao-seed-1-6-250615</option>
-            <option value="grok-4">Grok 3</option>
-        </select>
-        <button id="send" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">发送</button>
+
+<!-- 视频弹框 -->
+<div id="video-modal" class="hidden">
+    <div class="video-container">
+        <button id="close-video-btn" class="close-btn">×</button>
+        <h2 class="text-lg font-semibold mb-4 text-white">项目演示视频</h2>
+        <video id="project-video" class="w-full" controls>
+            <source src="https://example.com/project-demo.mp4" type="video/mp4">
+            你的浏览器不支持视频播放。
+        </video>
     </div>
 </div>
 
 <script>
+    // 视频弹框逻辑
+    const openVideoBtn = document.getElementById('open-video-btn');
+    const closeVideoBtn = document.getElementById('close-video-btn');
+    const videoModal = document.getElementById('video-modal');
+    const videoElement = document.getElementById('project-video');
+
+    openVideoBtn.addEventListener('click', () => {
+        videoModal.classList.remove('hidden');
+        videoElement.play();
+    });
+
+    closeVideoBtn.addEventListener('click', () => {
+        videoModal.classList.add('hidden');
+        videoElement.pause();
+        videoElement.currentTime = 0;
+    });
+
+    videoModal.addEventListener('click', (e) => {
+        if (e.target === videoModal) {
+            videoModal.classList.add('hidden');
+            videoElement.pause();
+            videoElement.currentTime = 0;
+        }
+    });
+
+    // 聊天功能
     const messageInput = document.getElementById('message');
     const modelSelect = document.getElementById('model-select');
     const sendButton = document.getElementById('send');
     const chatMessages = document.getElementById('chat-messages');
     const chatContainer = document.getElementById('chat-container');
 
-    // 添加消息到聊天区域
+    const supportedModels = ['deepseek-r1-250528', 'kimi-k2-250711', 'doubao-seed-1-6-250615'];
+
+    function showError(message) {
+        const alertDiv = document.createElement('div');
+        alertDiv.className = 'alert';
+        alertDiv.innerText = message;
+        document.body.appendChild(alertDiv);
+        setTimeout(() => {
+            alertDiv.style.transition = 'opacity 0.3s ease-out';
+            alertDiv.style.opacity = '0';
+            setTimeout(() => alertDiv.remove(), 300);
+        }, 3000);
+    }
+
     function addMessage(content, isUser = false) {
         const messageDiv = document.createElement('div');
-        messageDiv.className = `p-2 my-2 rounded-lg ${isUser ? 'bg-blue-100 ml-auto max-w-[80%]' : 'bg-gray-200 max-w-[80%]'}`;
+        messageDiv.className = `p-4 rounded-xl max-w-[80%] ${isUser ? 'bg-blue-100 text-gray-800 ml-auto' : 'bg-gray-100 text-gray-800'}`;
         messageDiv.innerText = content;
         chatMessages.appendChild(messageDiv);
         chatContainer.scrollTop = chatContainer.scrollHeight;
     }
 
-    // 处理流式响应
     async function handleStream(response, responseDiv) {
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
-        let messageBuffer = ''; // 缓冲消息片段
-        const sentenceEnd = /[。！？\n]/; // 句子结束标志
+        let messageBuffer = '';
+        const sentenceEnd = /[。！？\n]/;
 
         while (true) {
             const { done, value } = await reader.read();
@@ -80,22 +218,20 @@
             }
 
             buffer += decoder.decode(value, { stream: true });
-            console.log('原始缓冲区:', buffer); // 调试：打印原始数据
+            console.log('原始缓冲区:', buffer);
             const lines = buffer.split('\n\n');
 
             for (let i = 0; i < lines.length - 1; i++) {
-                let line = lines[i].trim()
-                line = line.replaceAll("event:message","")
-                line = line.replaceAll("data:","")
-                console.log('收到SSE数据:', line); // 调试：打印每行数据
+                let line = lines[i].trim();
+                console.log('收到SSE数据:', line);
 
-                // 过滤无效数据
+                line = line.replaceAll("data:","").replaceAll("event:message","");
+
                 if (!line || line === 'event: message' || line === 'data:' || line === 'data:。event: message' || line.startsWith('data: event: message')) {
                     console.log('跳过无效数据:', line);
                     continue;
                 }
 
-                // 清理数据中的 event: message 和 data: 前缀
                 line = line.replace(/event: message/g, '').replace(/data: /g, '').trim();
                 if (!line) {
                     console.log('跳过空数据:', line);
@@ -105,16 +241,15 @@
                 let data = '';
                 if (line.startsWith('event: message\ndata: ')) {
                     data = line.split('event: message\ndata: ')[1];
-                    console.log('收到SSE数据1:', data); // 调试：message 分支
+                    console.log('收到SSE数据1:', data);
                 } else if (line.startsWith('data: ')) {
                     data = line.split('data: ')[1];
-                    console.log('收到SSE数据2:', data); // 调试：仅 data 分支
+                    console.log('收到SSE数据2:', data);
                 } else {
                     data = line;
-                    console.log('收到SSE数据3:', data); // 调试：纯文本
+                    console.log('收到SSE数据3:', data);
                 }
 
-                // 再次清理，确保无残留前缀
                 data = data.replace(/event: message/g, '').replace(/data: /g, '').trim();
                 if (!data || data === '[DONE]') {
                     if (data === '[DONE]') {
@@ -129,43 +264,44 @@
                 }
 
                 messageBuffer += data;
-                console.log('当前消息缓冲:', messageBuffer); // 调试：打印缓冲内容
+                console.log('当前消息缓冲:', messageBuffer);
 
-                // 检查是否包含句子结束标志或缓冲区足够长
                 if (sentenceEnd.test(messageBuffer) || messageBuffer.length > 100) {
                     responseDiv.innerText = (responseDiv.innerText === '加载中...' ? '' : responseDiv.innerText) + messageBuffer;
                     chatContainer.scrollTop = chatContainer.scrollHeight;
-                    messageBuffer = ''; // 清空缓冲
+                    messageBuffer = '';
                 }
             }
             buffer = lines[lines.length - 1];
         }
     }
 
-    // 处理发送消息
     sendButton.addEventListener('click', async () => {
         const message = messageInput.value.trim();
         const model = modelSelect.value;
+
         if (!message) {
-            alert('请输入消息！');
+            showError('请输入消息！');
+            return;
+        }
+        if (!supportedModels.includes(model)) {
+            showError('该大模型正在接入，请换个大模型');
             return;
         }
 
-        // 添加用户消息
         addMessage(message, true);
         messageInput.value = '';
         sendButton.disabled = true;
+        sendButton.innerText = '发送中...';
 
-        // 添加响应容器
         const responseDiv = document.createElement('div');
-        responseDiv.className = 'p-2 my-2 rounded-lg bg-gray-200 max-w-[80%]';
+        responseDiv.className = 'p-4 rounded-xl bg-gray-100 text-gray-800 max-w-[80%]';
         responseDiv.innerText = '加载中...';
         chatMessages.appendChild(responseDiv);
         chatContainer.scrollTop = chatContainer.scrollHeight;
 
         try {
-            // 发起 POST 请求，包含模型参数
-            console.log('发送请求:', { message, model }); // 调试：打印请求数据
+            console.log('发送请求:', { message, model });
             const response = await fetch('/api/chat/stream', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -176,18 +312,17 @@
                 throw new Error(`HTTP 错误: ${response.status}`);
             }
 
-            // 处理流式响应
             await handleStream(response, responseDiv);
         } catch (error) {
             responseDiv.innerText = `错误: ${error.message}`;
             console.error('请求错误:', error);
         } finally {
             sendButton.disabled = false;
+            sendButton.innerText = '发送';
             messageInput.focus();
         }
     });
 
-    // 支持回车键提交
     messageInput.addEventListener('keypress', (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
@@ -195,5 +330,6 @@
         }
     });
 </script>
+
 </body>
 </html>
